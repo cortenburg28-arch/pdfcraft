@@ -777,6 +777,10 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> 
     if ui.add_enabled(view.cover_applies(), widgets::checkbox(&mut cover, tl!("Show cover page in two-page view"))).changed() {
         picked = Some("view.layout.cover");
     }
+    let mut rtl = view.right_to_left;
+    if ui.add_enabled(view.cover_applies(), widgets::checkbox(&mut rtl, tl!("Right-to-left page order"))).changed() {
+        picked = Some("view.layout.rtl");
+    }
     if picked.is_some() {
         ui.close();
     }

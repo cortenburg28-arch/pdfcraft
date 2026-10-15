@@ -906,6 +906,18 @@ evidence = ["crates/ui-egui/tests/viewer.rs::layouts_fit_height_labels_and_syste
 notes = "View ▸ Page display, the rail's Page display button or the palette; disabled outside two-page view; next / previous page step one spread at a time even when several spreads fit on screen"
 
 [[feature]]
+id = "view.right-to-left-pages"
+title = "Right-to-left page order in two-page view"
+area = "B"
+tier = "P2"
+milestone = "M3"
+status = "shipped"
+commands = ["view.layout.rtl"]
+tools = []
+evidence = ["crates/ui-egui/tests/view.rs::right_to_left_page_order_mirrors_spreads_and_arrow_keys", "crates/ui-egui/tests/view.rs::a_document_bound_on_the_right_opens_right_to_left"]
+notes = "Issue #2339 (Arabic, Hebrew, Urdu). View ▸ Page display, the rail's Page display button, the palette or `set rtl on` on the control channel; disabled outside two-page view. The first page of each spread is the right-hand one, a cover page sits alone on the left, and ← turns to the next spread (→ back; Page Down / Page Up keep their meaning). A document bound on the right edge (`/ViewerPreferences /Direction /R2L`) opens this way. Per open document, not remembered between sessions; thumbnails, Organize and printing keep their left-to-right order; single-page view is unchanged. Acrobat's own rendering of right-edge binding not observed."
+
+[[feature]]
 id = "view.page-gaps"
 title = "Show or hide gaps between pages"
 area = "B"
@@ -3514,7 +3526,7 @@ status = "shipped"
 commands = ["file.properties"]
 tools = ["doc_initial_view"]
 evidence = ["crates/organize/src/tests.rs::initial_view_round_trips_and_keeps_scripts", "crates/automation/tests/automation.rs::initial_view_through_tools"]
-notes = "Advanced ▸ Reading Options: binding and language"
+notes = "Advanced ▸ Reading Options: binding and language; right-edge binding opens two-page view right to left (view.right-to-left-pages)"
 
 [[feature]]
 id = "organize.print-presets"

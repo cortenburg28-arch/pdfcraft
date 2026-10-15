@@ -1377,3 +1377,62 @@ fn two_up_scroll_end_reaches_an_unpaired_final_page() {
 fn two_up_scroll_end_with_cover_reaches_a_taller_left_page() {
     assert_final_spread_bottom_reachable(&[400, 400, 400, 400, 100], true);
 }
+
+#[test]
+fn right_to_left_page_order_mirrors_spreads_and_arrow_keys() {
+    // Arabic, Hebrew and Urdu books bind on the right: the earlier page of a spread is the
+    // right-hand one, and the next spread is to the left (#2339).
+    let mut h = harness(&[("layout", "two-page"), ("zoom", "50")]);
+    h.run_steps(4);
+    let (first, second) = (rect(&h, 0).unwrap(), rect(&h, 1).unwrap());
+    assert!(first.center().x < second.center().x, "left to right by default");
+
+    assert!(h.state_mut().execute("view.layout.rtl"));
+    h.run_steps(4);
+    let (first, second) = (rect(&h, 0).unwrap(), rect(&h, 1).unwrap());
+    assert!(first.center().x > second.center().x, "the first page is the right-hand one: {first:?} {second:?}");
+    assert!((first.min.y - second.min.y).abs() < 1.0, "still one spread");
+
+    // ← turns forward and → back, in the direction the pages are laid out.
+    h.key_press(Key::ArrowLeft);
+    h.run_steps(4);
+    assert_eq!(h.state().views[0].current, 2, "← goes to the next spread");
+    h.key_press(Key::ArrowRight);
+    h.run_steps(4);
+    assert_eq!(h.state().views[0].current, 0, "→ goes back");
+
+    // A cover page sits alone on the left, the mirror of where it sits left to right.
+    h.state_mut().set_option("cover", "on").unwrap();
+    h.run_steps(4);
+    let right_to_left = rect(&h, 0).unwrap();
+    h.state_mut().execute("view.layout.rtl");
+    h.run_steps(4);
+    let left_to_right = rect(&h, 0).unwrap();
+    assert!(right_to_left.max.x < left_to_right.min.x, "the cover moves to the left: {right_to_left:?} {left_to_right:?}");
+    h.state_mut().execute("view.layout.rtl");
+
+    // The setting only shapes two-page view, and the control channel refuses it elsewhere.
+    h.state_mut().execute("view.layout.single");
+    assert!(!h.state().views[0].reads_right_to_left());
+    assert!(!h.state_mut().execute("view.layout.rtl"), "nothing to order outside two-page view");
+    assert!(h.state_mut().set_option("rtl", "on").is_err());
+}
+
+#[test]
+fn a_document_bound_on_the_right_opens_right_to_left() {
+    // Document Properties ▸ Initial View ▸ Binding: Right Edge is `/Direction /R2L`.
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        let bound_right = String::from_utf8_lossy(PAGES).replace(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Catalog /Pages 2 0 R /PageLayout /TwoPageLeft /ViewerPreferences << /Direction /R2L >> >>",
+        );
+        app.open_bytes("bound-right.pdf", None, bound_right.into_bytes()).expect("opens");
+        app.open_bytes("pages.pdf", None, PAGES.to_vec()).expect("opens");
+        app
+    });
+    h.run_steps(8);
+    assert!(h.state().views[0].reads_right_to_left(), "the right-bound document reads right to left");
+    assert!(!h.state().views[1].right_to_left, "another document keeps its own order");
+}

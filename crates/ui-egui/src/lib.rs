@@ -1096,6 +1096,8 @@ impl PdfCraftApp {
             }
         }
         let view = &mut self.views[index];
+        // Right-edge binding (Document Properties ▸ Initial View ▸ Binding): spreads read right to left.
+        view.right_to_left = v.right_to_left;
         match v.layout {
             // The view opened in Default page display already.
             L::Default => {}
@@ -2576,6 +2578,17 @@ impl PdfCraftApp {
                 }
                 v.set_cover(on);
             }
+            ("rtl", Some(v)) => {
+                let on = match value {
+                    "on" => true,
+                    "off" => false,
+                    _ => return Err("rtl must be on or off".into()),
+                };
+                if on && !v.cover_applies() {
+                    return Err("switch to two-page view first to order pages right to left".into());
+                }
+                v.set_right_to_left(on);
+            }
             ("default-layout", _) => {
                 let (layout, continuous) =
                     canvas::parse_display_token(value).ok_or("default-layout must be single, continuous, two-up or two-page")?;
@@ -2741,6 +2754,7 @@ impl PdfCraftApp {
                     "layout",
                     "continuous",
                     "cover",
+                    "rtl",
                     "organize",
                     "grid-zoom",
                     "fields",

@@ -322,6 +322,9 @@ pub struct DocView {
     pub disk_changed: bool,
     /// Two-page view: show the first page alone, as a cover (View ▸ Page display).
     pub cover: bool,
+    /// Two-page view: page order right to left, as Arabic, Hebrew and Urdu books bind (#2339).
+    /// Opens as the document asks (`/Direction /R2L`); View ▸ Page display changes it.
+    pub right_to_left: bool,
     /// Previous view / Next view: pages visited before (and after, once going back).
     pub back: Vec<usize>,
     pub forward: Vec<usize>,
@@ -624,6 +627,7 @@ impl DocView {
             scripts_off_noted: false,
             disk_changed: false,
             cover: false,
+            right_to_left: false,
             back: Vec::new(),
             forward: Vec::new(),
             goto: None,
@@ -763,6 +767,7 @@ impl DocView {
         fresh.highlight_fields = self.highlight_fields;
         fresh.notice_dismissed = self.notice_dismissed;
         fresh.cover = self.cover;
+        fresh.right_to_left = self.right_to_left;
         fresh.back = std::mem::take(&mut self.back);
         fresh.forward = std::mem::take(&mut self.forward);
         fresh.find = self.find.take();
@@ -1299,6 +1304,19 @@ impl DocView {
     /// Whether the cover page setting applies: only two-page view has a cover page.
     pub fn cover_applies(&self) -> bool {
         self.layout == PageLayout::TwoUp
+    }
+
+    /// Set right-to-left page order in two-page view. A no-op unless something changed.
+    pub fn set_right_to_left(&mut self, on: bool) {
+        if self.right_to_left != on {
+            self.right_to_left = on;
+            self.goto = Some((self.current, 0.0));
+        }
+    }
+
+    /// Whether spreads are laid out right to left now: the setting only shapes two-page view.
+    pub fn reads_right_to_left(&self) -> bool {
+        self.right_to_left && self.layout == PageLayout::TwoUp
     }
 
     /// One wheel event in a non-continuous view, where the wheel turns pages or spreads (the
@@ -1858,10 +1876,28 @@ impl DocView {
                     let sizes: Vec<Vec2> = pair.iter().map(|p| self.display_size(p)).map(|(w, h)| vec2(w * s, h * s)).collect();
                     let row_w: f32 = sizes.iter().map(|v| v.x).sum::<f32>() + GAP * (sizes.len() as f32 - 1.0);
                     let row_h = sizes.iter().map(|v| v.y).fold(0.0, f32::max);
-                    let mut x = if self.cover && ri == 0 { (content_w / 2.0 + GAP / 2.0).max(SIDE) } else { ((content_w - row_w) / 2.0).max(SIDE) };
-                    for size in sizes {
-                        rects.push(Rect::from_min_size(pos2(x, y + (row_h - size.y) / 2.0), size));
-                        x += size.x + GAP;
+                    let rtl = self.right_to_left;
+                    let mut x = match (self.cover && ri == 0, sizes.first()) {
+                        // Right to left, the cover is the right-hand page's mirror: alone on the left.
+                        (true, Some(first)) if rtl => (content_w / 2.0 - GAP / 2.0 - first.x).max(SIDE),
+                        (true, _) => (content_w / 2.0 + GAP / 2.0).max(SIDE),
+                        (false, _) => ((content_w - row_w) / 2.0).max(SIDE),
+                    };
+                    // Right to left, the earlier page of a spread is the right-hand one.
+                    let row: Vec<Rect> = sizes
+                        .iter()
+                        .map(|size| {
+                            let r = Rect::from_min_size(pos2(x, y + (row_h - size.y) / 2.0), *size);
+                            x += size.x + GAP;
+                            r
+                        })
+                        .collect();
+                    match (rtl, row.first(), row.last()) {
+                        (true, Some(left), Some(right)) => {
+                            let (lo, hi) = (left.min.x, right.max.x);
+                            rects.extend(row.iter().map(|r| r.translate(vec2(lo + hi - r.max.x - r.min.x, 0.0))));
+                        }
+                        _ => rects.extend(row),
                     }
                     y += row_h + GAP;
                 }
@@ -2146,12 +2182,14 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
     }
     // As in Acrobat: → / ← go to the next / previous page in every layout (#185), and so do
     // ⌘Page Down / ⌘Page Up, or plain Page Down / Page Up in single-page view.
+    // Right to left, the next spread is the one on the left, so ← turns forward (#2339).
     let command = ctx.input(|i| i.modifiers.command);
     let scrolls = view.continuous;
-    if key(Key::ArrowRight) || (key(Key::PageDown) && (command || !scrolls)) {
+    let (next, previous) = if view.reads_right_to_left() { (Key::ArrowLeft, Key::ArrowRight) } else { (Key::ArrowRight, Key::ArrowLeft) };
+    if key(next) || (key(Key::PageDown) && (command || !scrolls)) {
         view.step_page(true);
     }
-    if key(Key::ArrowLeft) || (key(Key::PageUp) && (command || !scrolls)) {
+    if key(previous) || (key(Key::PageUp) && (command || !scrolls)) {
         view.step_page(false);
     }
     // ↓ / ↑ scroll a line, and Page Down / Page Up a screen where the pages scroll. In
